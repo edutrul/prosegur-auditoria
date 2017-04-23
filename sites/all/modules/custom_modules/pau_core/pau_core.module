@@ -1,0 +1,117 @@
+<?php
+
+/**
+ * @file
+ * pau_core.module functionality.
+ */
+
+define('CONTENT_TYPE_AUDIT_SELLS', 'auditoria_de_venta');
+define('CONTENT_TYPE_AUDIT_SERVICE', 'auditoria_de_servicio');
+define('CONTENT_TYPE_AUDIT_TECHNIQUE', 'auditoria_tecnica');
+
+define('FIELD_AUDIT_SELLS', 'field_auditoria_venta');
+define('FIELD_AUDIT_SERVICE', 'field_auditoria_servicio');
+define('FIELD_AUDIT_TECHNIQUE', 'field_auditoria_tecnica');
+
+
+define('FIELD_AUDIT_SELLS_CONFIRM', 'field_venta_conformidad');
+define('FIELD_AUDIT_SELLS_SCORE', 'field_venta_ponderacion');
+
+define('FIELD_AUDIT_SERVICE_CONFIRM', 'field_servicio_conformidad');
+define('FIELD_AUDIT_SERVICE_SCORE', 'field_servicio_ponderacion');
+
+define('FIELD_AUDIT_TECHNIQUE_CONFIRM', 'field_servicio_conformidad');
+define('FIELD_AUDIT_TECHNIQUE_SCORE', 'field_servicio_ponderacion');
+
+
+
+/**
+ * Implements hook_form_alter().
+ */
+function pau_core_form_alter(&$form, $form_state, $form_id) {
+  if ($form_id === 'auditoria_node_form') {
+    $form['field_auditorias_permitidas'][LANGUAGE_NONE]['#disabled'] = TRUE;
+    $params = drupal_get_query_parameters();
+    $fields_to_hide = array(
+      'field_auditoria_venta',
+      'field_auditoria_tecnica',
+      'field_auditoria_servicio',
+    );
+    foreach ($fields_to_hide as $field_to_hide) {
+      if (!empty($params[$field_to_hide]) && $params[$field_to_hide] === 'hide') {
+        $form[$field_to_hide]['#access'] = FALSE;
+        // Get audits allowed to remove from default value.
+        $audits_allowed_default_value = $form['field_auditorias_permitidas'][LANGUAGE_NONE]['#default_value'];
+        for ($i = 0; $i < count($audits_allowed_default_value); $i++) {
+          if ($field_to_hide == $audits_allowed_default_value[$i]) {
+            unset($form['field_auditorias_permitidas'][LANGUAGE_NONE]['#default_value'][$i]);
+            break;
+          }
+        }
+        
+      }
+    }
+    //dpm($form);
+    $form['#submit'][] = '_auditoria_average_result_submit';
+  }
+}
+
+function _auditoria_average_result_submit(&$form, &$form_state) {
+  dpm($form_state);
+  $field_audit_types = $form_state['values']['field_auditorias_permitidas'][LANGUAGE_NONE];
+  $score = 0;
+  $score_average = 0;
+  foreach ($field_audit_types as $audit_type) {
+    $audit = _get_current_audit($audit_type['value']);
+    dpm($audit);
+    dpm($form_state['values'][$audit['field_auditoria']][LANGUAGE_NONE]['form'][$audit['field_conformidad'] . '_' . 1][LANGUAGE_NONE][0]['value']);
+    // @TODO: Update logic to get last poderacion_NUMBER instead of hardcoding limit.
+    for ($i = 1; $i < 100; $i++) {
+      if (!empty($form_state['values'][$audit['field_auditoria']][LANGUAGE_NONE]['form'][$audit['field_conformidad'] . '_' . $i][LANGUAGE_NONE][0]['value']) && 
+        !empty($form_state['values'][$audit['field_auditoria']][LANGUAGE_NONE]['form'][$audit['field_ponderacion'] . '_' . $i][LANGUAGE_NONE][0]['value'])) {
+        $score += $form_state['values'][$audit['field_auditoria']][LANGUAGE_NONE]['form'][$audit['field_ponderacion'] . '_' . $i][LANGUAGE_NONE][0]['value'];
+      }
+    }
+    dpm($score);
+  }
+  dpm('total score');
+  dpm($score);
+  $average_score = $score / count($field_audit_types);
+  dpm($average_score);
+}
+
+/**
+ * Get current audit information.
+ * 
+ * @param string $audit_type
+ *   Type of audit.
+ * @return array
+ *   Array for audits else FALSE.
+ */
+function _get_current_audit($audit_type) {
+  switch ($audit_type) {
+    case FIELD_AUDIT_SELLS:
+      return array(
+        'content_type' => CONTENT_TYPE_AUDIT_SELLS,
+        'field_auditoria' => FIELD_AUDIT_SELLS,
+        'field_conformidad' => FIELD_AUDIT_SELLS_CONFIRM,
+        'field_ponderacion' => FIELD_AUDIT_SELLS_SCORE
+      );
+    case FIELD_AUDIT_SERVICE:
+      return array(
+        'content_type' => CONTENT_TYPE_AUDIT_SERVICE,
+        'field_auditoria' => FIELD_AUDIT_SERVICE,
+        'field_conformidad' => FIELD_AUDIT_SERVICE_CONFIRM,
+        'field_ponderacion' => FIELD_AUDIT_SERVICE_SCORE        
+      );
+    case FIELD_AUDIT_TECHNIQUE:
+      return array(
+        'content_type' => CONTENT_TYPE_AUDIT_TECHNIQUE,
+        'field_auditoria' => FIELD_AUDIT_TECHNIQUE,
+        'field_conformidad' => FIELD_AUDIT_TECHNIQUE_CONFIRM,
+        'field_ponderacion' => FIELD_AUDIT_TECHNIQUE_SCORE        
+      );
+    default:
+      return FALSE;
+  }
+}
