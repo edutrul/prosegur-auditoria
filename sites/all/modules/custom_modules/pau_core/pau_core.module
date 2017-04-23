@@ -51,20 +51,19 @@ function pau_core_form_alter(&$form, $form_state, $form_id) {
         
       }
     }
-    //dpm($form);
     $form['#submit'][] = '_auditoria_average_result_submit';
   }
 }
 
+/**
+ * Submission callback for _auditoria_average_result_submit().
+ */
 function _auditoria_average_result_submit(&$form, &$form_state) {
-  dpm($form_state);
   $field_audit_types = $form_state['values']['field_auditorias_permitidas'][LANGUAGE_NONE];
   $score = 0;
   $score_average = 0;
   foreach ($field_audit_types as $audit_type) {
     $audit = _get_current_audit($audit_type['value']);
-    dpm($audit);
-    dpm($form_state['values'][$audit['field_auditoria']][LANGUAGE_NONE]['form'][$audit['field_conformidad'] . '_' . 1][LANGUAGE_NONE][0]['value']);
     // @TODO: Update logic to get last poderacion_NUMBER instead of hardcoding limit.
     for ($i = 1; $i < 100; $i++) {
       if (!empty($form_state['values'][$audit['field_auditoria']][LANGUAGE_NONE]['form'][$audit['field_conformidad'] . '_' . $i][LANGUAGE_NONE][0]['value']) && 
@@ -72,12 +71,11 @@ function _auditoria_average_result_submit(&$form, &$form_state) {
         $score += $form_state['values'][$audit['field_auditoria']][LANGUAGE_NONE]['form'][$audit['field_ponderacion'] . '_' . $i][LANGUAGE_NONE][0]['value'];
       }
     }
-    dpm($score);
   }
-  dpm('total score');
-  dpm($score);
   $average_score = $score / count($field_audit_types);
-  dpm($average_score);
+
+  $form_state['values']['field_auditoria_promedio'][LANGUAGE_NONE][0]['value'] = $score;
+
 }
 
 /**
