@@ -20,8 +20,8 @@ define('FIELD_AUDIT_SELLS_SCORE', 'field_venta_ponderacion');
 define('FIELD_AUDIT_SERVICE_CONFIRM', 'field_servicio_conformidad');
 define('FIELD_AUDIT_SERVICE_SCORE', 'field_servicio_ponderacion');
 
-define('FIELD_AUDIT_TECHNIQUE_CONFIRM', 'field_servicio_conformidad');
-define('FIELD_AUDIT_TECHNIQUE_SCORE', 'field_servicio_ponderacion');
+define('FIELD_AUDIT_TECHNIQUE_CONFIRM', 'field_tecnica_conformidad');
+define('FIELD_AUDIT_TECHNIQUE_SCORE', 'field_tecnica_ponderacion');
 
 
 
@@ -51,31 +51,28 @@ function pau_core_form_alter(&$form, $form_state, $form_id) {
         
       }
     }
-    $form['#submit'][] = '_auditoria_average_result_submit';
+    //$form['#submit'][] = '_auditoria_average_result_submit';
   }
 }
 
 /**
- * Submission callback for _auditoria_average_result_submit().
+ * implements hook_node_presave().
  */
-function _auditoria_average_result_submit(&$form, &$form_state) {
-  $field_audit_types = $form_state['values']['field_auditorias_permitidas'][LANGUAGE_NONE];
+function pau_core_node_presave($node) {
   $score = 0;
-  $score_average = 0;
-  foreach ($field_audit_types as $audit_type) {
-    $audit = _get_current_audit($audit_type['value']);
+  $audit = _get_current_audit($node->type);
+  if ($audit) {
+    $field_x = 'field_venta_conformidad';
     // @TODO: Update logic to get last poderacion_NUMBER instead of hardcoding limit.
     for ($i = 1; $i < 100; $i++) {
-      if (!empty($form_state['values'][$audit['field_auditoria']][LANGUAGE_NONE]['form'][$audit['field_conformidad'] . '_' . $i][LANGUAGE_NONE][0]['value']) && 
-        !empty($form_state['values'][$audit['field_auditoria']][LANGUAGE_NONE]['form'][$audit['field_ponderacion'] . '_' . $i][LANGUAGE_NONE][0]['value'])) {
-        $score += $form_state['values'][$audit['field_auditoria']][LANGUAGE_NONE]['form'][$audit['field_ponderacion'] . '_' . $i][LANGUAGE_NONE][0]['value'];
+      if (!empty($node->{$audit['field_conformidad'] . '_' . $i}[LANGUAGE_NONE][0]['value']) &&
+        !empty($node->{$audit['field_ponderacion'] . '_' . $i}[LANGUAGE_NONE][0]['value'])) {
+        $score += $node->{$audit['field_ponderacion'] . '_' . $i}[LANGUAGE_NONE][0]['value'];
       }
     }
+    $node->{$audit['field_ponderacion']}[LANGUAGE_NONE][0]['value'] = $score;
+    dpm($score);
   }
-  $average_score = $score / count($field_audit_types);
-
-  $form_state['values']['field_auditoria_promedio'][LANGUAGE_NONE][0]['value'] = $score;
-
 }
 
 /**
@@ -86,23 +83,24 @@ function _auditoria_average_result_submit(&$form, &$form_state) {
  * @return array
  *   Array for audits else FALSE.
  */
-function _get_current_audit($audit_type) {
-  switch ($audit_type) {
-    case FIELD_AUDIT_SELLS:
+function _get_current_audit($content_type) {
+  switch ($content_type) {
+    case CONTENT_TYPE_AUDIT_SELLS:
       return array(
-        'content_type' => CONTENT_TYPE_AUDIT_SELLS,
         'field_auditoria' => FIELD_AUDIT_SELLS,
         'field_conformidad' => FIELD_AUDIT_SELLS_CONFIRM,
-        'field_ponderacion' => FIELD_AUDIT_SELLS_SCORE
+        'field_ponderacion' => FIELD_AUDIT_SELLS_SCORE,
       );
-    case FIELD_AUDIT_SERVICE:
+      return 'field_venta_ponderacion';
+    case CONTENT_TYPE_AUDIT_SERVICE:
       return array(
         'content_type' => CONTENT_TYPE_AUDIT_SERVICE,
         'field_auditoria' => FIELD_AUDIT_SERVICE,
         'field_conformidad' => FIELD_AUDIT_SERVICE_CONFIRM,
-        'field_ponderacion' => FIELD_AUDIT_SERVICE_SCORE        
+        'field_ponderacion' => FIELD_AUDIT_SERVICE_SCORE,    
       );
-    case FIELD_AUDIT_TECHNIQUE:
+      return 'field_servicio_ponderacion';
+    case CONTENT_TYPE_AUDIT_TECHNIQUE:
       return array(
         'content_type' => CONTENT_TYPE_AUDIT_TECHNIQUE,
         'field_auditoria' => FIELD_AUDIT_TECHNIQUE,
