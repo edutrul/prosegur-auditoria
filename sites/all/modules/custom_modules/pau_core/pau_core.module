@@ -71,7 +71,6 @@ function pau_core_node_presave($node) {
       }
     }
     $node->{$audit['field_ponderacion']}[LANGUAGE_NONE][0]['value'] = $score;
-    dpm($score);
   }
 }
 
@@ -110,4 +109,189 @@ function _get_current_audit($content_type) {
     default:
       return FALSE;
   }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function pau_core_menu() {
+  $items = array();
+  // Allowed values: asesoria-ventas && tecnico.
+  $items['reportes/auditoria/%/%'] = array(
+    'title' => 'Evolución',
+    'title callback' => 'pau_core_report_audit_single_company_title',
+    'title arguments' => array(2, 3),
+    'page callback' => 'pau_core_report_audit_single_company',
+    'page arguments' => array(2, 3),
+    'access callback' => TRUE,
+  );
+
+  return $items;
+}
+
+function pau_core_report_audit_single_company_title($audit_type, $contratista = 'prosegur') {
+  if ($audit_type === 'asesoria-ventas') {
+    $report_name = 'Asesor de ventas';
+  }
+  elseif ($audit_type === 'tecnico') {
+    $report_name = 'Tecnico';
+  }
+  return t('Evolución @report_name - @contratista', array(
+    '@report_name' => $report_name,
+    '@contratista' => ucfirst($contratista)
+  ));
+}
+
+/**
+ * Page callback for pau_core_report_asesor_ventas_audit_single_company().
+ */
+function pau_core_report_audit_single_company($audit_type = 'asesoria-ventas', $contratista = 'prosegur') {
+  if ($audit_type === 'asesoria-ventas') {
+    $content_types = array(CONTENT_TYPE_AUDIT_SELLS);
+    $fiel_audit_sell_or_technique = 'field_asesor_de_ventas';
+    $vocabulary_name = 'asesor';
+  }
+  elseif ($audit_type === 'tecnico') {
+    $content_types = array(CONTENT_TYPE_AUDIT_SERVICE, CONTENT_TYPE_AUDIT_TECHNIQUE);
+    $fiel_audit_sell_or_technique = 'field_tecnico';
+    $vocabulary_name = 'tecnico';
+  }
+  $contratista_tid = _get_term_from_name($contratista, 'contratista');
+  if (!$contratista_tid) {
+    return '';
+  }
+  $header = array(
+    // Creating array that contains data from first cell
+    array('data' => t('Antiguedad')),   
+    // Second cell
+    array('data' => t('Nombre')),   
+  );
+  $dates = array();
+  for ($i = 3; $i >= 0; $i--) {
+    $month_name = date('M', strtotime("-$i Months"));
+    $dates[] = array(
+      'month' => date('m', strtotime("-$i Months")),
+      'year' => date('Y', strtotime("-$i Months")),
+      'month_name' => $month_name
+    );
+    $header[] = array('data' => $month_name);
+  }
+  $rows = array();
+  $header[] = array('data' => 'Promedio');
+  $vocabulary = taxonomy_vocabulary_machine_name_load($vocabulary_name);
+  $workers = entity_load('taxonomy_term', FALSE, array('vid' => $vocabulary->vid));
+  foreach ($workers as $worker) {
+    if (!empty($worker->field_contratista[LANGUAGE_NONE][0]['target_id']) && 
+      $worker->field_contratista[LANGUAGE_NONE][0]['target_id'] === $contratista_tid) {
+      $query = new EntityFieldQuery();
+      $query->entityCondition('entity_type', 'node')
+        ->entityCondition('bundle', array($content_types), 'IN')
+        ->propertyCondition('status', NODE_PUBLISHED)
+        ->fieldCondition($fiel_audit_sell_or_technique, 'target_id', $worker->tid)
+        // Run the query as user 1.
+        ->addMetaData('account', user_load(1));
+      $result = $query->execute();
+      if (isset($result['node'])) {
+        $auditorias_nids = array_keys($result['node']);
+        $auditorias_nodes = entity_load('node', $auditorias_nids);
+        $months_ponderacion = array();
+        // Get ponderaciones of != months and group them together on months.
+        foreach ($auditorias_nodes as $auditoria_node) {
+          $ponderacion = 0;
+          if ($audit_type === 'asesoria-ventas') {
+            $month = _pau_core_get_month_from_nid($auditoria_node->nid, 'field_auditoria_venta');
+            $ponderacion = !empty($auditoria_node->field_venta_ponderacion[LANGUAGE_NONE][0]['value']) ? $auditoria_node->field_venta_ponderacion[LANGUAGE_NONE][0]['value'] : 0;
+            $months_ponderacion[$month][] = $ponderacion;
+          }
+          elseif ($audit_type === 'tecnico') {
+            if (!empty($auditoria_node->field_tecnica_ponderacion[LANGUAGE_NONE][0]['value'])) {
+              $month = _pau_core_get_month_from_nid($auditoria_node->nid, 'field_auditoria_tecnica');
+              $ponderacion = $auditoria_node->field_tecnica_ponderacion[LANGUAGE_NONE][0]['value'];
+              $months_ponderacion[$month][] = $ponderacion;
+            }
+            elseif (!empty($auditoria_node->field_servicio_ponderacion[LANGUAGE_NONE][0]['value'])) {
+              $month = _pau_core_get_month_from_nid($auditoria_node->nid, 'field_auditoria_servicio');
+              $ponderacion = $auditoria_node->field_servicio_ponderacion[LANGUAGE_NONE][0]['value'];
+              $months_ponderacion[$month][] = $ponderacion;
+            }
+          }
+        }
+        $this_row = array();
+        $this_row[] = array('data' => t('+@months meses', array('@months' => $worker->tid)));
+        $this_row[] = array('data' => $worker->name);
+        $sum = 0.0;
+        $months_num = 0;
+        for ($i = 3; $i >= 0; $i--) {
+          $month_name = date('m', strtotime("-$i Months"));
+          if (!empty($months_ponderacion[$month_name])) {
+            $ponderacion = array_sum($months_ponderacion[$month_name]) / count($months_ponderacion[$month_name]);
+            $sum += $ponderacion;
+            $months_num++;
+            $this_row[] = array('data' => $ponderacion);
+          }
+          else {
+            $this_row[] = array('data' => '');
+          }
+        }
+        $total_ponderacion_by_user = $sum / $months_num;
+        $this_row[] = array('data' => $total_ponderacion_by_user, 'style' => get_semaforo_style($total_ponderacion_by_user));
+        $rows[] = $this_row;
+      }
+    }
+  }
+
+  return theme('table', array('header' => $header, 'rows'=> $rows));
+}
+
+function _pau_core_get_month_from_nid($nid, $field_audit) {
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'auditoria')
+    ->propertyCondition('status', NODE_PUBLISHED)
+    ->fieldCondition($field_audit, 'target_id', $nid)
+    // Run the query as user 1.
+    ->addMetaData('account', user_load(1));
+  $result = $query->execute();
+  if (isset($result['node'])) {
+    $auditoria_nid = array_keys($result['node']);
+    $auditoria_node = node_load($auditoria_nid[0]);
+    if (!empty($auditoria_node->field_auditoria_fecha[LANGUAGE_NONE][0]['value'])) {
+      return format_date($auditoria_node->field_auditoria_fecha[LANGUAGE_NONE][0]['value'], 'custom', 'm');
+    }
+  }
+  return FALSE;
+}
+
+function get_semaforo_style($average) {
+  switch($average) {
+    case ($average > 90):
+      return 'background: orange';
+    case ($average >= 85 && $average <= 89):
+      return 'background: green';
+    case ($average >= 74 && $average <= 84):
+      return 'background: yellow';
+    case ($average <= 73):
+      return 'background: red';
+  }
+}
+
+/**
+ * Helper function to dynamically get the tid from the term_name
+ *
+ * @param $term_name Term name
+ * @param $vocabulary_name Name of the vocabulary to search the term in
+ *
+ * @return Term id of the found term or else FALSE
+ */
+function _get_term_from_name($term_name, $vocabulary_name) {
+  if ($vocabulary = taxonomy_vocabulary_machine_name_load($vocabulary_name)) {
+    $tree = taxonomy_get_tree($vocabulary->vid);
+    foreach ($tree as $term) {
+      if (strtolower($term->name) === strtolower($term_name)) {
+        return $term->tid;
+      }
+    }
+  }
+
+  return FALSE;
 }
