@@ -406,7 +406,6 @@ function pau_core_report_audit_all_companies($audit_type = 'asesoria-ventas') {
   $months_num = 0;
   $rows = array();
   foreach ($score as $contratista_tid => $months_ponderacion) {
-    dpm($contratista_tid);
     $this_row = array();
     $contratista = taxonomy_term_load($contratista_tid);
     $this_row[] = array('data' => t('+@months meses', array('@months' => $contratista->tid)));
@@ -428,9 +427,6 @@ function pau_core_report_audit_all_companies($audit_type = 'asesoria-ventas') {
     $this_row[] = array('data' => $total_ponderacion_by_contratista, 'style' => get_semaforo_style($total_ponderacion_by_contratista));
     $rows[] = $this_row;
   }
-    dpm($score);
-
-
 
   return theme('table', array('header' => $header, 'rows'=> $rows));
 }
