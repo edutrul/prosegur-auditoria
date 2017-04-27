@@ -125,6 +125,14 @@ function pau_core_menu() {
     'page arguments' => array(2, 3),
     'access callback' => TRUE,
   );
+  $items['reportes/auditoria/%/contratista'] = array(
+    'title' => 'Evolución',
+    'title callback' => 'pau_core_report_audit_all_companies_title',
+    'title arguments' => array(2),
+    'page callback' => 'pau_core_report_audit_all_companies',
+    'page arguments' => array(2),
+    'access callback' => TRUE,
+  );
 
   return $items;
 }
@@ -294,4 +302,135 @@ function _get_term_from_name($term_name, $vocabulary_name) {
   }
 
   return FALSE;
+}
+
+function pau_core_report_audit_all_companies_title($audit_type) {
+  if ($audit_type === 'asesoria-ventas') {
+    $report_name = 'Asesor de ventas';
+  }
+  elseif ($audit_type === 'tecnico') {
+    $report_name = 'Tecnico';
+  }
+  return t('Evolución @report_name - Contratista', array(
+    '@report_name' => $report_name
+  ));
+}
+
+/**
+ * Page callback for pau_core_report_audit_all_companies().
+ */
+function pau_core_report_audit_all_companies($audit_type = 'asesoria-ventas') {
+  if ($audit_type === 'asesoria-ventas') {
+    $content_types = array(CONTENT_TYPE_AUDIT_SELLS);
+    $fiel_audit_sell_or_technique = 'field_asesor_de_ventas';
+    $vocabulary_name = 'asesor';
+  }
+  elseif ($audit_type === 'tecnico') {
+    $content_types = array(CONTENT_TYPE_AUDIT_SERVICE, CONTENT_TYPE_AUDIT_TECHNIQUE);
+    $fiel_audit_sell_or_technique = 'field_tecnico';
+    $vocabulary_name = 'tecnico';
+  }
+
+  $header = array(
+    // Creating array that contains data from first cell
+    array('data' => t('Antiguedad')),   
+    // Second cell
+    array('data' => t('Contratista')),   
+  );
+  $dates = array();
+  for ($i = 3; $i >= 0; $i--) {
+    $month_name = date('M', strtotime("-$i Months"));
+    $dates[] = array(
+      'month' => date('m', strtotime("-$i Months")),
+      'year' => date('Y', strtotime("-$i Months")),
+      'month_name' => $month_name
+    );
+    $header[] = array('data' => $month_name);
+  }
+  $header[] = array('data' => 'Promedio');
+  $vocabulary = taxonomy_vocabulary_machine_name_load($vocabulary_name);
+  $workers = entity_load('taxonomy_term', FALSE, array('vid' => $vocabulary->vid));
+  $score = array();
+  foreach ($workers as $worker) {
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type', 'node')
+      ->entityCondition('bundle', array($content_types), 'IN')
+      ->propertyCondition('status', NODE_PUBLISHED)
+      ->fieldCondition($fiel_audit_sell_or_technique, 'target_id', $worker->tid)
+      // Run the query as user 1.
+      ->addMetaData('account', user_load(1));
+    $result = $query->execute();
+    if (isset($result['node'])) {
+      $auditorias_nids = array_keys($result['node']);
+      $auditorias_nodes = entity_load('node', $auditorias_nids);
+      $months_ponderacion = array();
+      // Get ponderaciones of != months and group them together on months.
+      foreach ($auditorias_nodes as $auditoria_node) {
+        $ponderacion = 0;
+        if ($audit_type === 'asesoria-ventas') {
+          $month = _pau_core_get_month_from_nid($auditoria_node->nid, 'field_auditoria_venta');
+          $ponderacion = !empty($auditoria_node->field_venta_ponderacion[LANGUAGE_NONE][0]['value']) ? $auditoria_node->field_venta_ponderacion[LANGUAGE_NONE][0]['value'] : 0;
+          $months_ponderacion[$month][] = $ponderacion;
+        }
+        elseif ($audit_type === 'tecnico') {
+          if (!empty($auditoria_node->field_tecnica_ponderacion[LANGUAGE_NONE][0]['value'])) {
+            $month = _pau_core_get_month_from_nid($auditoria_node->nid, 'field_auditoria_tecnica');
+            $ponderacion = $auditoria_node->field_tecnica_ponderacion[LANGUAGE_NONE][0]['value'];
+            $months_ponderacion[$month][] = $ponderacion;
+          }
+          elseif (!empty($auditoria_node->field_servicio_ponderacion[LANGUAGE_NONE][0]['value'])) {
+            $month = _pau_core_get_month_from_nid($auditoria_node->nid, 'field_auditoria_servicio');
+            $ponderacion = $auditoria_node->field_servicio_ponderacion[LANGUAGE_NONE][0]['value'];
+            $months_ponderacion[$month][] = $ponderacion;
+          }
+        }
+      }
+      $this_row = array();
+      $this_row[] = array('data' => t('+@months meses', array('@months' => $worker->tid)));
+      $this_row[] = array('data' => $worker->name);
+      $sum = 0.0;
+      $months_num = 0;
+      $contratista_tid = $worker->field_contratista[LANGUAGE_NONE][0]['target_id'];
+      for ($i = 3; $i >= 0; $i--) {
+        $month_name = date('m', strtotime("-$i Months"));
+        if (!empty($months_ponderacion[$month_name])) {
+          $ponderacion = array_sum($months_ponderacion[$month_name]) / count($months_ponderacion[$month_name]);
+          $score[$contratista_tid][$month_name][] = $ponderacion;
+          $sum += $ponderacion;
+          $months_num++;
+        }
+      }
+    }
+  }
+  $sum = 0.0;
+  $months_num = 0;
+  $rows = array();
+  foreach ($score as $contratista_tid => $months_ponderacion) {
+    dpm($contratista_tid);
+    $this_row = array();
+    $contratista = taxonomy_term_load($contratista_tid);
+    $this_row[] = array('data' => t('+@months meses', array('@months' => $contratista->tid)));
+    $this_row[] = array('data' => $contratista->name);
+    for ($i = 3; $i >= 0; $i--) {
+      $month_name = date('m', strtotime("-$i Months"));
+      if (!empty($months_ponderacion[$month_name])) {
+        $ponderacion = array_sum($months_ponderacion[$month_name]) / count($months_ponderacion[$month_name]);
+        $score[$contratista_tid][$month_name] = $ponderacion;
+        $sum += $ponderacion;
+        $months_num++;
+        $this_row[] = array('data' => $ponderacion);
+      }
+      else {
+        $this_row[] = array('data' => '');
+      }
+    }
+    $total_ponderacion_by_contratista = $sum / $months_num;
+    $this_row[] = array('data' => $total_ponderacion_by_contratista, 'style' => get_semaforo_style($total_ponderacion_by_contratista));
+    $rows[] = $this_row;
+  }
+    dpm($score);
+
+
+
+  return theme('table', array('header' => $header, 'rows'=> $rows));
 }
