@@ -430,3 +430,13 @@ function pau_core_report_audit_all_companies($audit_type = 'asesoria-ventas') {
 
   return theme('table', array('header' => $header, 'rows'=> $rows));
 }
+
+/**
+ * Implements hook_views_api
+ */
+function pau_core_views_api() {
+  return array(
+    'api' => 3,
+    'path' => drupal_get_path('module', 'pau_core'),
+  );
+}

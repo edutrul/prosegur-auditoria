@@ -2,3 +2,5 @@ name = Prosegur Auditoria Core
 description = All custom functions, reports for prosegur auditoria
 package = custom
 core = 7.x
+dependencies[] = views
+files[] = views/pau_core_create_audit_field.inc
