@@ -72,6 +72,15 @@ function pau_core_node_presave($node) {
     }
     $node->{$audit['field_ponderacion']}[LANGUAGE_NONE][0]['value'] = $score;
   }
+  if ($node->type === 'auditoria') {
+    $params = drupal_get_query_parameters();
+    if (!empty($params['planificacion_nid']) && is_numeric($params['planificacion_nid'])) {
+      $node = node_load($params['planificacion_nid']);
+      $node_wrapper = entity_metadata_wrapper('node', $node);
+      $node_wrapper->field_estado_auditoria->set('finalizado');
+      $node_wrapper->save();
+    }
+  }
 }
 
 /**
