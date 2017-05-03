@@ -43,12 +43,12 @@ function pau_core_form_alter(&$form, $form_state, $form_id) {
         // Get audits allowed to remove from default value.
         $audits_allowed_default_value = $form['field_auditorias_permitidas'][LANGUAGE_NONE]['#default_value'];
         for ($i = 0; $i < count($audits_allowed_default_value); $i++) {
-          if ($field_to_hide == $audits_allowed_default_value[$i]) {
+          if (!empty($audits_allowed_default_value[$i]) &&
+            $field_to_hide == $audits_allowed_default_value[$i]) {
             unset($form['field_auditorias_permitidas'][LANGUAGE_NONE]['#default_value'][$i]);
             break;
           }
         }
-        
       }
     }
     //$form['#submit'][] = '_auditoria_average_result_submit';
