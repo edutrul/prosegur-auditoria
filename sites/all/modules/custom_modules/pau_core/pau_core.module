@@ -250,8 +250,10 @@ function pau_core_report_audit_single_company($audit_type = 'asesoria-ventas', $
             $this_row[] = array('data' => '');
           }
         }
-        $total_ponderacion_by_user = $sum / $months_num;
-        $this_row[] = array('data' => $total_ponderacion_by_user, 'style' => get_semaforo_style($total_ponderacion_by_user));
+        if ($months_num != 0) {
+          $total_ponderacion_by_user = $sum / $months_num;
+          $this_row[] = array('data' => $total_ponderacion_by_user, 'style' => get_semaforo_style($total_ponderacion_by_user));
+        }
         $rows[] = $this_row;
       }
     }
